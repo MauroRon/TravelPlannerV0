@@ -1,7 +1,20 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { signOut, type User } from '@/lib/firebase/auth'
+import {
+  getTrips,
+  createTrip,
+  updateTrip,
+  deleteTrip,
+  getTripMembers,
+  getTripInvites,
+  createTripInvite,
+  addTripMember,
+  removeTripMember,
+  subscribeToTrips,
+  subscribeToTripMembers,
+} from '@/lib/firebase/firestore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
@@ -11,15 +24,12 @@ import {
   MapPin, 
   Plane, 
   Plus, 
-  Briefcase, 
-  Globe,
   RefreshCw,
   Clock,
-  User
+  User as UserIcon
 } from 'lucide-react'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { it } from 'date-fns/locale'
-import type { User } from '@supabase/supabase-js'
 import type { Trip, TripMember, TripInvite, Profile } from '@/lib/types'
 import { TripCalendar } from '@/components/trip-calendar'
 import { TripForm } from '@/components/trip-form'
@@ -36,7 +46,6 @@ interface DashboardContentProps {
 
 export function DashboardContent({ user, profile }: DashboardContentProps) {
   const router = useRouter()
-  const supabase = createClient()
   
   const [trips, setTrips] = useState<Trip[]>([])
   const [allTrips, setAllTrips] = useState<Trip[]>([])
@@ -52,119 +61,50 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
   const [showEditModal, setShowEditModal] = useState(false)
   const [viewTab, setViewTab] = useState<'calendar' | 'people'>('calendar')
 
-  const displayName = profile?.display_name || user.email?.split('@')[0] || 'Utente'
+  const displayName = profile?.display_name || user.displayName || user.email?.split('@')[0] || 'Utente'
 
   const fetchTrips = useCallback(async () => {
-    // Recupera TUTTI i viaggi
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .order('start_date', { ascending: true })
-
-    if (!error && data) {
-      setTrips(data)
-    }
+    const data = await getTrips()
+    setTrips(data)
+    setAllTrips(data)
     setIsLoading(false)
-  }, [supabase])
-
-  const fetchAllTrips = useCallback(async () => {
-    // Recupera TUTTI i viaggi per il calendario
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .order('start_date', { ascending: true })
-
-    if (!error && data) {
-      setAllTrips(data)
-    }
-  }, [supabase])
+  }, [])
 
   const fetchTripMembers = useCallback(async (tripId: string) => {
-    // Recupera i members
-    const { data: members, error: membersError } = await supabase
-      .from('trip_members')
-      .select('id, trip_id, user_id, role, status')
-      .eq('trip_id', tripId)
-
-    if (membersError) {
-      console.error('[v0] fetchTripMembers error:', membersError)
-      return
-    }
-
-    if (!members || members.length === 0) {
-      setTripMembers([])
-      return
-    }
-
-    // Recupera i profili degli utenti
-    const userIds = members.map(m => m.user_id)
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, display_name')
-      .in('id', userIds)
-
-    // Unisci i dati
-    const membersWithProfiles = members.map(member => ({
-      ...member,
-      profiles: profiles?.find(p => p.id === member.user_id) || null
-    }))
-
-    setTripMembers(membersWithProfiles)
-  }, [supabase])
+    const members = await getTripMembers(tripId)
+    setTripMembers(members)
+  }, [])
 
   const fetchTripInvites = useCallback(async (tripId: string) => {
-    const { data } = await supabase
-      .from('trip_invites')
-      .select('*')
-      .eq('trip_id', tripId)
-
-    if (data) {
-      setTripInvites(data)
-    }
-  }, [supabase])
+    const invites = await getTripInvites(tripId)
+    setTripInvites(invites)
+  }, [])
 
   useEffect(() => {
     fetchTrips()
-    fetchAllTrips()
 
-    // Sottoscrizione a cambiamenti real-time su trips (solo se il form non è aperto)
-    const tripsSubscription = supabase
-      .channel('trips-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'trips' },
-        () => {
-          // Non refetcha se il form edit è aperto
-          if (!showEditModal) {
-            fetchTrips()
-            fetchAllTrips()
-          }
-        }
-      )
-      .subscribe()
+    // Subscribe to real-time updates
+    const unsubscribeTrips = subscribeToTrips((updatedTrips) => {
+      if (!showEditModal) {
+        setTrips(updatedTrips)
+        setAllTrips(updatedTrips)
+      }
+    })
 
-    // Sottoscrizione a cambiamenti real-time su trip_members
-    const membersSubscription = supabase
-      .channel('trip-members-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'trip_members' },
-        () => {
-          if (!showEditModal) {
-            fetchTrips()
-          }
-        }
-      )
-      .subscribe()
+    const unsubscribeMembers = subscribeToTripMembers(() => {
+      if (!showEditModal) {
+        fetchTrips()
+      }
+    })
 
     return () => {
-      tripsSubscription.unsubscribe()
-      membersSubscription.unsubscribe()
+      unsubscribeTrips()
+      unsubscribeMembers()
     }
-  }, [fetchTrips, fetchAllTrips, supabase, showEditModal])
+  }, [fetchTrips, showEditModal])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     router.push('/auth/login')
   }
 
@@ -189,25 +129,17 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
     color: string
     status: 'da_confermare' | 'confermato'
   }) => {
-    const { data: newTrip, error } = await supabase
-      .from('trips')
-      .insert({
-        ...data,
-        created_by: user.id,
-      })
-      .select()
-      .single()
+    const newTrip = await createTrip({
+      ...data,
+      created_by: user.uid,
+    })
 
-    if (error) throw new Error(error.message)
-
-    if (newTrip) {
-      setTrips((prevTrips) => [...prevTrips, newTrip].sort((a, b) => 
-        new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
-      ))
-      setAllTrips((prevTrips) => [...prevTrips, newTrip].sort((a, b) => 
-        new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
-      ))
-    }
+    setTrips((prevTrips) => [...prevTrips, newTrip].sort((a, b) => 
+      new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+    ))
+    setAllTrips((prevTrips) => [...prevTrips, newTrip].sort((a, b) => 
+      new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+    ))
     
     setShowNewTripModal(false)
     setSelectedDate(undefined)
@@ -217,12 +149,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
   const handleDeleteTrip = async () => {
     if (!selectedTrip) return
 
-    const { error } = await supabase
-      .from('trips')
-      .delete()
-      .eq('id', selectedTrip.id)
-
-    if (error) throw new Error(error.message)
+    await deleteTrip(selectedTrip.id)
 
     setTrips((prevTrips) => prevTrips.filter((t) => t.id !== selectedTrip.id))
     setAllTrips((prevTrips) => prevTrips.filter((t) => t.id !== selectedTrip.id))
@@ -233,58 +160,34 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
   const handleInvite = async (email: string) => {
     if (!selectedTrip) return
 
-    const { error } = await supabase.from('trip_invites').insert({
+    await createTripInvite({
       trip_id: selectedTrip.id,
       email,
-      invited_by: user.id,
+      invited_by: user.uid,
+      status: 'pending',
     })
 
-    if (error) {
-      if (error.code === '23505') {
-        throw new Error('Questo utente è già stato invitato')
-      }
-      throw new Error(error.message)
-    }
-
-    // Aggiorna la lista inviti
     await fetchTripInvites(selectedTrip.id)
   }
 
   const handleJoinTrip = async () => {
     if (!selectedTrip) return
 
-    const { error } = await supabase.from('trip_members').insert({
+    await addTripMember({
       trip_id: selectedTrip.id,
-      user_id: user.id,
+      user_id: user.uid,
       role: 'member',
       status: 'accepted',
       joined_at: new Date().toISOString(),
     })
 
-    if (error) {
-      if (error.code === '23505') {
-        throw new Error('Sei già un partecipante di questo viaggio')
-      }
-      throw new Error(error.message)
-    }
-
-    // Aggiorna la lista membri
     await fetchTripMembers(selectedTrip.id)
   }
 
   const handleRemoveMember = async (memberId: string) => {
     if (!selectedTrip) return
 
-    const { error } = await supabase
-      .from('trip_members')
-      .delete()
-      .eq('id', memberId)
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    // Aggiorna la lista membri
+    await removeTripMember(memberId)
     await fetchTripMembers(selectedTrip.id)
   }
 
@@ -292,8 +195,6 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
   const upcomingTrips = trips.filter(
     (trip) => parseISO(trip.end_date) >= new Date()
   )
-  
-  const nextTrip = upcomingTrips[0]
 
   const getTripDuration = (trip: Trip) => {
     const start = parseISO(trip.start_date)
@@ -303,14 +204,6 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
 
   const getTripStatus = (trip: Trip) => {
     return trip.status === 'confermato' ? 'Confermato' : 'Da confermare'
-  }
-
-  const getStatusColor = (status: string, tripColor: string) => {
-    switch (status) {
-      case 'In corso': return 'bg-green-500'
-      case 'Completato': return 'bg-gray-400'
-      default: return ''
-    }
   }
 
   return (
@@ -335,7 +228,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
               <span className="sm:hidden">Nuovo</span>
             </Button>
             <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-foreground bg-muted/50">
-              <User className="h-4 w-4 text-muted-foreground" />
+              <UserIcon className="h-4 w-4 text-muted-foreground" />
               <span className="truncate">{displayName}</span>
             </div>
             <Button variant="ghost" size="icon" onClick={handleLogout} className="h-9 w-9">
@@ -359,7 +252,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
             variant={viewTab === 'people' ? 'default' : 'outline'}
             onClick={() => setViewTab('people')}
           >
-            <User className="h-4 w-4 mr-2" />
+            <UserIcon className="h-4 w-4 mr-2" />
             Per Persona
           </Button>
         </div>
@@ -386,7 +279,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
         {viewTab === 'people' && (
           <div>
             <h2 className="text-lg font-semibold text-foreground mb-4">Viaggi per Persona</h2>
-            <PeopleTripsView userId={user.id} onTripClick={handleTripClick} />
+            <PeopleTripsView userId={user.uid} onTripClick={handleTripClick} />
           </div>
         )}
 
@@ -470,7 +363,6 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
                               style={{ color: trip.color }}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                // Future: open map
                               }}
                             >
                               <MapPin className="h-4 w-4" />
@@ -539,8 +431,8 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
             trip={selectedTrip}
             members={tripMembers}
             invites={tripInvites}
-            isOwner={selectedTrip.created_by === user.id}
-            userId={user.id}
+            isOwner={selectedTrip.created_by === user.uid}
+            userId={user.uid}
             onDelete={handleDeleteTrip}
             onInvite={handleInvite}
             onJoin={handleJoinTrip}
@@ -567,12 +459,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
           <TripForm
             initialTrip={selectedTrip}
             onSubmit={async (data) => {
-              const { error } = await supabase
-                .from('trips')
-                .update(data)
-                .eq('id', selectedTrip.id)
-
-              if (error) throw new Error(error.message)
+              await updateTrip(selectedTrip.id, data)
 
               setTrips((prevTrips) =>
                 prevTrips.map((t) =>

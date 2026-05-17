@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { getTripsGroupedByPerson } from '@/lib/firebase/firestore'
 import type { Trip } from '@/lib/types'
 import { format, parseISO } from 'date-fns'
 import { it } from 'date-fns/locale'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { MapPin } from 'lucide-react'
 
 interface PersonTrips {
@@ -21,91 +20,18 @@ interface PeopleTripsViewProps {
 }
 
 export function PeopleTripsView({ userId, onTripClick }: PeopleTripsViewProps) {
-  const supabase = createClient()
   const [peopleTrips, setPeopleTrips] = useState<PersonTrips[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   const fetchPeopleTrips = useCallback(async () => {
     setIsLoading(true)
     try {
-      // Recupera TUTTI gli utenti
-      const { data: allProfiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, display_name')
-
-      if (profilesError) {
-        console.error('[v0] Error fetching profiles:', profilesError)
-        setIsLoading(false)
-        return
-      }
-
-      if (!allProfiles || allProfiles.length === 0) {
-        setPeopleTrips([])
-        setIsLoading(false)
-        return
-      }
-
-      // Recupera TUTTI i viaggi
-      const { data: allTrips, error: tripsError } = await supabase
-        .from('trips')
-        .select('*')
-
-      if (tripsError) {
-        console.error('[v0] Error fetching trips:', tripsError)
-        setIsLoading(false)
-        return
-      }
-
-      if (!allTrips || allTrips.length === 0) {
-        setPeopleTrips([])
-        setIsLoading(false)
-        return
-      }
-
-      // Recupera TUTTI i membri
-      const { data: allMembers, error: membersError } = await supabase
-        .from('trip_members')
-        .select('id, trip_id, user_id, role, status')
-        .eq('status', 'accepted')
-
-      if (membersError) {
-        console.error('[v0] Error fetching members:', membersError)
-        setIsLoading(false)
-        return
-      }
-
-      // Raggruppa i viaggi per persona
-      const groupedByPerson = new Map<string, PersonTrips>()
-
-      allMembers?.forEach(member => {
-        const profile = allProfiles?.find(p => p.id === member.user_id)
-        const personName = profile?.display_name || `Utente ${member.user_id.substring(0, 8)}`
-        const personId = member.user_id
-
-        if (!groupedByPerson.has(personId)) {
-          groupedByPerson.set(personId, {
-            personName,
-            personId,
-            trips: []
-          })
-        }
-
-        const trip = allTrips?.find(t => t.id === member.trip_id)
-        if (trip) {
-          groupedByPerson.get(personId)!.trips.push(trip)
-        }
-      })
-
-      // Converte in array e ordina per nome persona
-      const sorted = Array.from(groupedByPerson.values()).sort((a, b) =>
-        a.personName.localeCompare(b.personName)
-      )
-
-      setPeopleTrips(sorted)
+      const grouped = await getTripsGroupedByPerson()
+      setPeopleTrips(grouped)
     } finally {
       setIsLoading(false)
     }
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
     fetchPeopleTrips()

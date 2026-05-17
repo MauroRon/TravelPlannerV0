@@ -1,6 +1,6 @@
 'use client'
 
-import { createClient } from '@/lib/supabase/client'
+import { signUp } from '@/lib/firebase/auth'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -27,7 +27,6 @@ export default function SignUpPage() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
@@ -44,18 +43,8 @@ export default function SignUpPage() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: {
-            display_name: displayName,
-          },
-        },
-      })
-      if (error) throw error
-      router.push('/auth/sign-up-success')
+      await signUp(email, password, displayName)
+      router.push('/dashboard')
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Si è verificato un errore')
     } finally {
