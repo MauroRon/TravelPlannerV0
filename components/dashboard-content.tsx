@@ -129,18 +129,12 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
     color: string
     status: 'da_confermare' | 'confermato'
   }) => {
-    const newTrip = await createTrip({
+    await createTrip({
       ...data,
       created_by: user.uid,
     })
 
-    setTrips((prevTrips) => [...prevTrips, newTrip].sort((a, b) => 
-      new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
-    ))
-    setAllTrips((prevTrips) => [...prevTrips, newTrip].sort((a, b) => 
-      new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
-    ))
-    
+    // La subscription subscribeToTrips aggiornerà automaticamente lo stato
     setShowNewTripModal(false)
     setSelectedDate(undefined)
     setSelectedFormDateRange(undefined)
@@ -151,8 +145,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
 
     await deleteTrip(selectedTrip.id)
 
-    setTrips((prevTrips) => prevTrips.filter((t) => t.id !== selectedTrip.id))
-    setAllTrips((prevTrips) => prevTrips.filter((t) => t.id !== selectedTrip.id))
+    // La subscription aggiornerà automaticamente lo stato
     setShowTripDetails(false)
     setSelectedTrip(null)
   }
