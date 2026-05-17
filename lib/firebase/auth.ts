@@ -3,6 +3,8 @@
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
@@ -10,6 +12,8 @@ import {
 } from 'firebase/auth'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { getFirebaseAuth, getFirebaseDb } from './config'
+
+const googleProvider = new GoogleAuthProvider()
 
 export type { User }
 
@@ -41,6 +45,28 @@ export async function signUp(email: string, password: string, displayName: strin
 export async function signOut() {
   const auth = getFirebaseAuth()
   return firebaseSignOut(auth)
+}
+
+export async function signInWithGoogle() {
+  const auth = getFirebaseAuth()
+  const db = getFirebaseDb()
+  const result = await signInWithPopup(auth, googleProvider)
+  
+  // Check if user profile exists, if not create it
+  const profileRef = doc(db, 'profiles', result.user.uid)
+  const profileSnap = await getDoc(profileRef)
+  
+  if (!profileSnap.exists()) {
+    await setDoc(profileRef, {
+      id: result.user.uid,
+      display_name: result.user.displayName || 'Utente',
+      email: result.user.email,
+      avatar_url: result.user.photoURL,
+      created_at: new Date().toISOString(),
+    })
+  }
+  
+  return result.user
 }
 
 export function onAuthChange(callback: (user: User | null) => void) {
