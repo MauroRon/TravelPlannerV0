@@ -14,6 +14,7 @@ import {
   removeTripMember,
   subscribeToTrips,
   subscribeToTripMembers,
+  getProfile,
 } from '@/lib/firebase/firestore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -60,6 +61,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
   const [viewTab, setViewTab] = useState<'calendar' | 'people'>('calendar')
+  const [tripCreatorName, setTripCreatorName] = useState<string | undefined>(undefined)
 
   const displayName = profile?.display_name || user.displayName || user.email?.split('@')[0] || 'Utente'
 
@@ -117,6 +119,13 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
     setSelectedTrip(trip)
     await fetchTripMembers(trip.id)
     await fetchTripInvites(trip.id)
+    
+    // Fetch creator name
+    if (trip.created_by) {
+      const creatorProfile = await getProfile(trip.created_by)
+      setTripCreatorName(creatorProfile?.display_name || `Utente ${trip.created_by.substring(0, 8)}`)
+    }
+    
     setShowTripDetails(true)
   }
 
@@ -426,6 +435,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
             invites={tripInvites}
             isOwner={selectedTrip.created_by === user.uid}
             userId={user.uid}
+            creatorName={tripCreatorName}
             onDelete={handleDeleteTrip}
             onInvite={handleInvite}
             onJoin={handleJoinTrip}
@@ -437,6 +447,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
             onClose={() => {
               setShowTripDetails(false)
               setSelectedTrip(null)
+              setTripCreatorName(undefined)
             }}
           />
         )}

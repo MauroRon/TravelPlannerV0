@@ -17,6 +17,7 @@ interface TripDetailsProps {
   invites: TripInvite[]
   isOwner: boolean
   userId: string
+  creatorName?: string
   onDelete: () => Promise<void>
   onInvite: (email: string) => Promise<void>
   onJoin: () => Promise<void>
@@ -31,6 +32,7 @@ export function TripDetails({
   invites,
   isOwner,
   userId,
+  creatorName,
   onDelete,
   onInvite,
   onJoin,
@@ -114,6 +116,11 @@ export function TripDetails({
             <div className="mt-1 flex items-center gap-1 text-white/90">
               <MapPin className="h-4 w-4" />
               <span>{trip.destination}</span>
+            </div>
+          )}
+          {creatorName && (
+            <div className="mt-2 text-sm text-white/80">
+              Creato da <span className="font-medium">{creatorName}</span>
             </div>
           )}
         </div>

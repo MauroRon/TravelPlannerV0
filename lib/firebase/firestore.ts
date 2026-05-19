@@ -31,6 +31,16 @@ export async function createTrip(tripData: Omit<Trip, 'id' | 'created_at'>): Pro
     ...tripData,
     created_at: new Date().toISOString(),
   })
+  
+  // Aggiungi automaticamente il creatore come membro owner
+  await addDoc(collection(db, 'trip_members'), {
+    trip_id: docRef.id,
+    user_id: tripData.created_by,
+    role: 'owner',
+    status: 'accepted',
+    joined_at: new Date().toISOString(),
+  })
+  
   return { id: docRef.id, ...tripData, created_at: new Date().toISOString() } as Trip
 }
 
