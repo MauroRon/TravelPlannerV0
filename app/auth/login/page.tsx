@@ -44,10 +44,21 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      await signInWithGoogle()
+      console.log('[v0] Starting Google Sign-In...')
+      const user = await signInWithGoogle()
+      console.log('[v0] Google Sign-In successful:', user.email)
       router.push('/dashboard')
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Si è verificato un errore con Google')
+      console.error('[v0] Google Sign-In error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Si è verificato un errore con Google'
+      // Show more specific error for Firebase auth errors
+      if (error && typeof error === 'object' && 'code' in error) {
+        const firebaseError = error as { code: string; message: string }
+        console.error('[v0] Firebase error code:', firebaseError.code)
+        setError(`Errore: ${firebaseError.code} - ${firebaseError.message}`)
+      } else {
+        setError(errorMessage)
+      }
     } finally {
       setIsGoogleLoading(false)
     }
