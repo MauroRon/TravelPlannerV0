@@ -3,7 +3,8 @@
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
@@ -49,24 +50,38 @@ export async function signOut() {
 
 export async function signInWithGoogle() {
   const auth = getFirebaseAuth()
+  await signInWithRedirect(auth, googleProvider)
+}
+
+export async function handleGoogleRedirectResult() {
+  const auth = getFirebaseAuth()
   const db = getFirebaseDb()
-  const result = await signInWithPopup(auth, googleProvider)
   
-  // Check if user profile exists, if not create it
-  const profileRef = doc(db, 'profiles', result.user.uid)
-  const profileSnap = await getDoc(profileRef)
-  
-  if (!profileSnap.exists()) {
-    await setDoc(profileRef, {
-      id: result.user.uid,
-      display_name: result.user.displayName || 'Utente',
-      email: result.user.email,
-      avatar_url: result.user.photoURL,
-      created_at: new Date().toISOString(),
-    })
+  try {
+    const result = await getRedirectResult(auth)
+    
+    if (result?.user) {
+      // Check if user profile exists, if not create it
+      const profileRef = doc(db, 'profiles', result.user.uid)
+      const profileSnap = await getDoc(profileRef)
+      
+      if (!profileSnap.exists()) {
+        await setDoc(profileRef, {
+          id: result.user.uid,
+          display_name: result.user.displayName || 'Utente',
+          email: result.user.email,
+          avatar_url: result.user.photoURL,
+          created_at: new Date().toISOString(),
+        })
+      }
+      
+      return result.user
+    }
+    return null
+  } catch (error) {
+    console.error('[v0] Google redirect result error:', error)
+    throw error
   }
-  
-  return result.user
 }
 
 export function onAuthChange(callback: (user: User | null) => void) {

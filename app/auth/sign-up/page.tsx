@@ -1,6 +1,6 @@
 'use client'
 
-import { signUp, signInWithGoogle } from '@/lib/firebase/auth'
+import { signUp, signInWithGoogle, handleGoogleRedirectResult, onAuthChange } from '@/lib/firebase/auth'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MapPin, Plane } from 'lucide-react'
 
 export default function SignUpPage() {
@@ -25,6 +25,34 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const router = useRouter()
+
+  // Handle Google redirect result on page load
+  useEffect(() => {
+    const checkRedirectResult = async () => {
+      try {
+        const user = await handleGoogleRedirectResult()
+        if (user) {
+          router.push('/dashboard')
+        }
+      } catch (error) {
+        if (error && typeof error === 'object' && 'code' in error) {
+          const firebaseError = error as { code: string; message: string }
+          setError(`Errore Google: ${firebaseError.message}`)
+        }
+      }
+    }
+    checkRedirectResult()
+  }, [router])
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthChange((user) => {
+      if (user) {
+        router.push('/dashboard')
+      }
+    })
+    return () => unsubscribe()
+  }, [router])
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -59,10 +87,14 @@ export default function SignUpPage() {
 
     try {
       await signInWithGoogle()
-      router.push('/dashboard')
+      // The page will redirect to Google, then back here
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Si è verificato un errore con Google')
-    } finally {
+      if (error && typeof error === 'object' && 'code' in error) {
+        const firebaseError = error as { code: string; message: string }
+        setError(`Errore: ${firebaseError.message}`)
+      } else {
+        setError(error instanceof Error ? error.message : 'Si è verificato un errore con Google')
+      }
       setIsGoogleLoading(false)
     }
   }

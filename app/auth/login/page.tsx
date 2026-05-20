@@ -1,6 +1,6 @@
 'use client'
 
-import { signIn, signInWithGoogle } from '@/lib/firebase/auth'
+import { signIn, signInWithGoogle, handleGoogleRedirectResult, onAuthChange } from '@/lib/firebase/auth'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MapPin, Plane } from 'lucide-react'
 
 export default function LoginPage() {
@@ -23,6 +23,35 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const router = useRouter()
+
+  // Handle Google redirect result on page load
+  useEffect(() => {
+    const checkRedirectResult = async () => {
+      try {
+        const user = await handleGoogleRedirectResult()
+        if (user) {
+          router.push('/dashboard')
+        }
+      } catch (error) {
+        console.error('[v0] Redirect result error:', error)
+        if (error && typeof error === 'object' && 'code' in error) {
+          const firebaseError = error as { code: string; message: string }
+          setError(`Errore Google: ${firebaseError.message}`)
+        }
+      }
+    }
+    checkRedirectResult()
+  }, [router])
+
+  // Listen for auth state changes (user logged in via redirect)
+  useEffect(() => {
+    const unsubscribe = onAuthChange((user) => {
+      if (user) {
+        router.push('/dashboard')
+      }
+    })
+    return () => unsubscribe()
+  }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,22 +73,17 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      console.log('[v0] Starting Google Sign-In...')
-      const user = await signInWithGoogle()
-      console.log('[v0] Google Sign-In successful:', user.email)
-      router.push('/dashboard')
+      await signInWithGoogle()
+      // The page will redirect to Google, then back here
+      // The useEffect will handle the redirect result
     } catch (error: unknown) {
       console.error('[v0] Google Sign-In error:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Si è verificato un errore con Google'
-      // Show more specific error for Firebase auth errors
       if (error && typeof error === 'object' && 'code' in error) {
         const firebaseError = error as { code: string; message: string }
-        console.error('[v0] Firebase error code:', firebaseError.code)
-        setError(`Errore: ${firebaseError.code} - ${firebaseError.message}`)
+        setError(`Errore: ${firebaseError.message}`)
       } else {
-        setError(errorMessage)
+        setError(error instanceof Error ? error.message : 'Si è verificato un errore con Google')
       }
-    } finally {
       setIsGoogleLoading(false)
     }
   }
