@@ -1,6 +1,6 @@
 'use client'
 
-import { signUp, signInWithGoogle, handleGoogleRedirectResult, onAuthChange } from '@/lib/firebase/auth'
+import { signUp, signInWithGoogle, onAuthChange } from '@/lib/firebase/auth'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -25,24 +25,6 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const router = useRouter()
-
-  // Handle Google redirect result on page load
-  useEffect(() => {
-    const checkRedirectResult = async () => {
-      try {
-        const user = await handleGoogleRedirectResult()
-        if (user) {
-          router.push('/dashboard')
-        }
-      } catch (error) {
-        if (error && typeof error === 'object' && 'code' in error) {
-          const firebaseError = error as { code: string; message: string }
-          setError(`Errore Google: ${firebaseError.message}`)
-        }
-      }
-    }
-    checkRedirectResult()
-  }, [router])
 
   // Listen for auth state changes
   useEffect(() => {
@@ -86,15 +68,18 @@ export default function SignUpPage() {
     setError(null)
 
     try {
-      await signInWithGoogle()
-      // The page will redirect to Google, then back here
+      const user = await signInWithGoogle()
+      if (user) {
+        router.push('/dashboard')
+      }
     } catch (error: unknown) {
       if (error && typeof error === 'object' && 'code' in error) {
         const firebaseError = error as { code: string; message: string }
-        setError(`Errore: ${firebaseError.message}`)
+        setError(`Errore: ${firebaseError.code} - ${firebaseError.message}`)
       } else {
         setError(error instanceof Error ? error.message : 'Si è verificato un errore con Google')
       }
+    } finally {
       setIsGoogleLoading(false)
     }
   }

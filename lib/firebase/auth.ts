@@ -3,18 +3,21 @@
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
+  browserPopupRedirectResolver,
   type User
 } from 'firebase/auth'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { getFirebaseAuth, getFirebaseDb } from './config'
 
 const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+})
 
 export type { User }
 
@@ -50,36 +53,31 @@ export async function signOut() {
 
 export async function signInWithGoogle() {
   const auth = getFirebaseAuth()
-  await signInWithRedirect(auth, googleProvider)
-}
-
-export async function handleGoogleRedirectResult() {
-  const auth = getFirebaseAuth()
   const db = getFirebaseDb()
   
+  console.log('[v0] Starting Google Sign-In with popup...')
+  
   try {
-    const result = await getRedirectResult(auth)
+    const result = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver)
+    console.log('[v0] Google Sign-In successful:', result.user.email)
     
-    if (result?.user) {
-      // Check if user profile exists, if not create it
-      const profileRef = doc(db, 'profiles', result.user.uid)
-      const profileSnap = await getDoc(profileRef)
-      
-      if (!profileSnap.exists()) {
-        await setDoc(profileRef, {
-          id: result.user.uid,
-          display_name: result.user.displayName || 'Utente',
-          email: result.user.email,
-          avatar_url: result.user.photoURL,
-          created_at: new Date().toISOString(),
-        })
-      }
-      
-      return result.user
+    // Check if user profile exists, if not create it
+    const profileRef = doc(db, 'profiles', result.user.uid)
+    const profileSnap = await getDoc(profileRef)
+    
+    if (!profileSnap.exists()) {
+      await setDoc(profileRef, {
+        id: result.user.uid,
+        display_name: result.user.displayName || 'Utente',
+        email: result.user.email,
+        avatar_url: result.user.photoURL,
+        created_at: new Date().toISOString(),
+      })
     }
-    return null
-  } catch (error) {
-    console.error('[v0] Google redirect result error:', error)
+    
+    return result.user
+  } catch (error: unknown) {
+    console.error('[v0] Google Sign-In error:', error)
     throw error
   }
 }
