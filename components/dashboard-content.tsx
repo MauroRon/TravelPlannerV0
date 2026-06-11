@@ -15,6 +15,7 @@ import {
   subscribeToTrips,
   subscribeToTripMembers,
   getProfile,
+  getAllTripMembersWithProfiles,
 } from '@/lib/firebase/firestore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -27,7 +28,8 @@ import {
   Plus, 
   RefreshCw,
   Clock,
-  User as UserIcon
+  User as UserIcon,
+  Users
 } from 'lucide-react'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -62,6 +64,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
   const [showEditModal, setShowEditModal] = useState(false)
   const [viewTab, setViewTab] = useState<'calendar' | 'people'>('calendar')
   const [tripCreatorName, setTripCreatorName] = useState<string | undefined>(undefined)
+  const [membersByTrip, setMembersByTrip] = useState<Record<string, TripMember[]>>({})
 
   const displayName = profile?.display_name || user.displayName || user.email?.split('@')[0] || 'Utente'
 
@@ -69,7 +72,14 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
     const data = await getTrips()
     setTrips(data)
     setAllTrips(data)
+    const members = await getAllTripMembersWithProfiles()
+    setMembersByTrip(members)
     setIsLoading(false)
+  }, [])
+
+  const fetchAllMembers = useCallback(async () => {
+    const members = await getAllTripMembersWithProfiles()
+    setMembersByTrip(members)
   }, [])
 
   const fetchTripMembers = useCallback(async (tripId: string) => {
@@ -96,6 +106,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
     const unsubscribeMembers = subscribeToTripMembers(() => {
       if (!showEditModal) {
         fetchTrips()
+        fetchAllMembers()
       }
     })
 
@@ -288,7 +299,7 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
         {/* Lista Viaggi */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-foreground">I Tuoi Viaggi</h2>
+            <h2 className="text-lg font-semibold text-foreground">Viaggi</h2>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <RefreshCw className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Aggiornamento in tempo reale</span>
@@ -314,6 +325,12 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
               {trips.map((trip) => {
                 const status = getTripStatus(trip)
                 const duration = getTripDuration(trip)
+                const members = membersByTrip[trip.id] || []
+                const creator = members.find((m) => m.user_id === trip.created_by)
+                const creatorLabel =
+                  creator?.profiles?.display_name ||
+                  (trip.created_by === user.uid ? displayName : `Utente ${trip.created_by?.substring(0, 6)}`)
+                const participants = members.filter((m) => m.user_id !== trip.created_by)
                 
                 return (
                   <Card
@@ -351,6 +368,32 @@ export function DashboardContent({ user, profile }: DashboardContentProps) {
                             {format(parseISO(trip.start_date), 'd MMM yyyy', { locale: it })} -{' '}
                             {format(parseISO(trip.end_date), 'd MMM yyyy', { locale: it })}
                           </span>
+                        </div>
+
+                        {/* Creatore */}
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1.5">
+                          <UserIcon className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">
+                            Creato da <span className="font-medium text-foreground">{creatorLabel}</span>
+                          </span>
+                        </div>
+
+                        {/* Partecipanti */}
+                        <div className="flex items-start gap-2 text-sm text-muted-foreground mb-2">
+                          <Users className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                          {participants.length > 0 ? (
+                            <span className="text-pretty">
+                              {participants
+                                .map(
+                                  (m) =>
+                                    m.profiles?.display_name ||
+                                    (m.user_id === user.uid ? displayName : `Utente ${m.user_id.substring(0, 6)}`)
+                                )
+                                .join(', ')}
+                            </span>
+                          ) : (
+                            <span className="italic">Nessun partecipante</span>
+                          )}
                         </div>
 
                         {/* Footer */}

@@ -151,6 +151,26 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Profile : null
 }
 
+// Recupera tutti i membri di tutti i viaggi, con profili, raggruppati per trip_id
+export async function getAllTripMembersWithProfiles(): Promise<Record<string, TripMember[]>> {
+  const db = getFirebaseDb()
+  const profiles = await getAllProfiles()
+  const membersSnapshot = await getDocs(collection(db, 'trip_members'))
+  const members = membersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as TripMember))
+
+  const grouped: Record<string, TripMember[]> = {}
+  members.forEach((member) => {
+    const profile = profiles.find(p => p.id === member.user_id) || null
+    const memberWithProfile = { ...member, profiles: profile }
+    if (!grouped[member.trip_id]) {
+      grouped[member.trip_id] = []
+    }
+    grouped[member.trip_id].push(memberWithProfile)
+  })
+
+  return grouped
+}
+
 // Get all trips with members for people view
 export async function getTripsGroupedByPerson(): Promise<{
   personName: string
